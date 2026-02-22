@@ -1,10 +1,11 @@
 package fr.lucreeper74.createmetallurgy.content.blocks.faucet;
 
 import com.simibubi.create.content.fluids.FluidFX;
-import com.simibubi.create.content.kinetics.belt.behaviour.DirectBeltInputBehaviour;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.fluid.SmartFluidTankBehaviour;
+import fr.lucreeper74.createmetallurgy.content.entities.ladle.LadleEntity;
+import fr.lucreeper74.createmetallurgy.content.entities.ladle.LadleItem;
 import fr.lucreeper74.createmetallurgy.registries.CMDamageTypes;
 import fr.lucreeper74.createmetallurgy.registries.CMFluids;
 import net.createmod.catnip.data.Iterate;
@@ -14,9 +15,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -27,15 +28,18 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
+import net.minecraftforge.fluids.capability.IFluidHandler.FluidAction;
 import net.minecraftforge.fluids.capability.templates.EmptyFluidHandler;
+import net.minecraftforge.fluids.capability.templates.FluidTank;
 
 import java.util.List;
 
+import static fr.lucreeper74.createmetallurgy.content.entities.ladle.LadleItem.LADLE_CAPACITY;
 import static fr.lucreeper74.createmetallurgy.content.fluids.MoltenFluidType.MOLTEN_FLUID_BURNING_TIME;
 
 public class FaucetBlockEntity extends SmartBlockEntity {
     private static final int MAX_HEIGHT = 5;
-    public static final int TRANSFER_RATE = 5;
+    public static final int TRANSFER_RATE = 10;
 
     private LazyOptional<IFluidHandler> attachedTank;
     private LazyOptional<IFluidHandler> targetTank;
@@ -94,14 +98,14 @@ public class FaucetBlockEntity extends SmartBlockEntity {
         return LazyOptional.empty();
     }
 
-    public LazyOptional<IFluidHandler> getAttachedTank() {
+    public IFluidHandler getAttachedTank() {
         Direction facing = getBlockState().getValue(FaucetBlock.FACING);
         if (attachedTank == null) // Fetch the attached tank only if it has changed
             attachedTank = getTank(worldPosition.relative(facing.getOpposite()), facing);
-        return attachedTank;
+        return attachedTank.orElse(EmptyFluidHandler.INSTANCE);
     }
 
-    public LazyOptional<IFluidHandler> getTargetTank() {
+    public IFluidHandler getTargetTank() {
         // Fetch the targeted tank each time needed
         BlockPos pos = worldPosition;
         int fallDist = 0;
@@ -117,7 +121,7 @@ public class FaucetBlockEntity extends SmartBlockEntity {
             invalidateRenderBoundingBox();
         }
         sendData();
-        return targetTank;
+        return targetTank.orElse(EmptyFluidHandler.INSTANCE);
     }
 
     public void trySpoutput() {
@@ -126,9 +130,8 @@ public class FaucetBlockEntity extends SmartBlockEntity {
                 createFluidParticles(renderFluid);
                 return;
             }
-            Fluid fluid = renderFluid.getFluid();
-            if (fluid.is(CMFluids.MOLTEN_MATERIALS) || fluid.is(FluidTags.LAVA))
-                hurtEntities();
+            if (spillOnEntities())
+                return; // The fluid is blocked by an entity (e.g Filling ladle)
         }
 
         if (tryFill() <= 0) {
@@ -142,57 +145,81 @@ public class FaucetBlockEntity extends SmartBlockEntity {
         }
     }
 
-    private void hurtEntities() {
+    private boolean spillOnEntities() {
+        boolean isFluidBlocked = false;
+
+        Fluid spilledFluid = renderFluid.getFluid();
         List<Entity> entities = getLevel().getEntities(null, getRenderBoundingBox()); // Blacklist entities in the parameter
+
         for (Entity entity : entities) {
-            if (!entity.fireImmune()) {
-                entity.setSecondsOnFire(MOLTEN_FLUID_BURNING_TIME);
-                if (entity.hurt(CMDamageTypes.moltenFluid(entity.level()), 4.0F))
-                    entity.playSound(SoundEvents.GENERIC_BURN, .4F, 3F);
+            if (CMFluids.isMoltenMaterial(spilledFluid)) {
+                if (!entity.fireImmune()) {
+                    entity.setSecondsOnFire(MOLTEN_FLUID_BURNING_TIME);
+                    if (entity.hurt(CMDamageTypes.moltenFluid(entity.level()), 4.0F))
+                        entity.playSound(SoundEvents.GENERIC_BURN, .4F, 3F);
+                }
+            }
+
+            if (entity instanceof LadleEntity ladleEntity) {
+                ItemStack ladle = ladleEntity.getBox();
+
+                if (LadleItem.getFluidAmount(ladle) < LADLE_CAPACITY) {
+                    isFluidBlocked = true; // The Ladle can be filled
+
+                    FluidTank targetTank = LadleItem.getFluidContents(ladle);
+
+                    for (boolean simulate : Iterate.trueAndFalse) {
+                        FluidAction action = simulate ? FluidAction.SIMULATE : FluidAction.EXECUTE;
+                        FluidStack drained = getAttachedTank().drain(TRANSFER_RATE, action);
+
+                        if (drained.isEmpty())
+                            break;
+
+                        int filled = targetTank.fill(drained.copy(), action);
+                        if (filled <= 0)
+                            break;
+                        if (simulate)
+                            continue;
+
+                        LadleItem.setFluidContents(ladle, targetTank);
+                    }
+                }
             }
         }
+        return isFluidBlocked;
     }
 
     protected int tryFill() {
-        IFluidHandler inputTank = getAttachedTank().orElse(EmptyFluidHandler.INSTANCE);
-        IFluidHandler targetTank = getTargetTank().orElse(EmptyFluidHandler.INSTANCE);
+        IFluidHandler inputTank = getAttachedTank();
+        IFluidHandler targetTank = getTargetTank();
 
-        FluidStack fluidInTank = inputTank.getFluidInTank(0).copy();
-        if (fluidInTank.isEmpty())
-            return 0;
-
-        fluidInTank.setAmount(TRANSFER_RATE);
-
-        int fill = 0;
-
-        DirectBeltInputBehaviour directBeltInputBehaviour =
-                BlockEntityBehaviour.get(level, getBlockPos().below(fallingDistance), DirectBeltInputBehaviour.TYPE);
-        if (directBeltInputBehaviour == null || !directBeltInputBehaviour.canInsertFromSide(Direction.UP))
-            return 0;
-
+        int filled = 0;
         for (boolean simulate : Iterate.trueAndFalse) {
-            IFluidHandler.FluidAction action = simulate ? IFluidHandler.FluidAction.SIMULATE : IFluidHandler.FluidAction.EXECUTE;
-            fill = targetTank instanceof SmartFluidTankBehaviour.InternalFluidHandler
-                    ? ((SmartFluidTankBehaviour.InternalFluidHandler) targetTank).forceFill(fluidInTank, action)
-                    : targetTank.fill(fluidInTank, action);
+            FluidAction action = simulate ? FluidAction.SIMULATE : FluidAction.EXECUTE;
+            FluidStack drained = inputTank.drain(TRANSFER_RATE, action);
 
-            if (fill <= 0)
+            if (drained.isEmpty())
+                return 0;
+
+            filled = targetTank instanceof SmartFluidTankBehaviour.InternalFluidHandler
+                    ? ((SmartFluidTankBehaviour.InternalFluidHandler) targetTank).forceFill(drained.copy(), action)
+                    : targetTank.fill(drained.copy(), action);
+            if (filled <= 0)
                 break;
             if (simulate)
                 continue;
-
-            FluidStack drained = inputTank.drain(fill, IFluidHandler.FluidAction.EXECUTE);
 
             if (!renderFluid.isFluidEqual(drained)) {
                 renderFluid = drained;
                 sendData();
             }
         }
-        return fill;
+
+        return filled;
     }
 
     protected void spillFluid() {
-        IFluidHandler inputTank = getAttachedTank().orElse(EmptyFluidHandler.INSTANCE);
+        IFluidHandler inputTank = getAttachedTank();
 
         FluidStack fluid = inputTank.drain(TRANSFER_RATE, IFluidHandler.FluidAction.EXECUTE);
 

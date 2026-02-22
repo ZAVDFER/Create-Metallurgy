@@ -27,8 +27,8 @@ public class CMDamageTypes {
 
     public static void bootstrap(BootstapContext<DamageType> ctx) {
         new DamageTypeBuilder(GRINDER).register(ctx);
-        new DamageTypeBuilder(MOLTEN_FLUID).scaling(DamageScaling.ALWAYS).effects(DamageEffects.BURNING).register(ctx);
-        new DamageTypeBuilder(FOUNDRY).scaling(DamageScaling.ALWAYS).effects(DamageEffects.BURNING).register(ctx);
+        new DamageTypeBuilder(MOLTEN_FLUID).scaling(DamageScaling.WHEN_CAUSED_BY_LIVING_NON_PLAYER).effects(DamageEffects.BURNING).exhaustion(.2f).register(ctx);
+        new DamageTypeBuilder(FOUNDRY).scaling(DamageScaling.WHEN_CAUSED_BY_LIVING_NON_PLAYER).effects(DamageEffects.BURNING).exhaustion(.1f).register(ctx);
     }
 
     private static DamageSource source(ResourceKey<DamageType> key, LevelReader level) {

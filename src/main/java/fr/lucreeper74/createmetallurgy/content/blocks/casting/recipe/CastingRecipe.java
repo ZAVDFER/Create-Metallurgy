@@ -32,30 +32,30 @@ public abstract class CastingRecipe implements Recipe<SmartInventory> {
         this.processingDuration = 0;
         this.moldConsumed = false;
         this.result = CastingOutput.EMPTY;
-
-        validate(id);
     }
 
-    private void validate(ResourceLocation recipeTypeId) {
+    protected void validate(ResourceLocation recipeTypeId) {
         String messageHeader = "Your custom recipe (" + recipeTypeId + ")";
         Logger logger = CreateMetallurgy.LOGGER;
 
-        if(ingredient.isEmpty() && moldConsumed) {
-            logger.warn(messageHeader + " specified a mold condition. Mold conditions have no impact on this recipe cause there is no mold.");
+        if (ingredient.isEmpty() && moldConsumed) {
+            logger.warn("{} specified a mold condition. Mold condition have no impact on this recipe cause there is no mold.", messageHeader);
         }
     }
 
-    public static boolean match(CastingBlockEntity be, Recipe<?> recipe) {
+    public static boolean match(CastingBlockEntity be, Recipe<?> recipe, FluidStack testedFluid, boolean ignoreFluidAmount) {
         if (recipe instanceof CastingRecipe castingRecipe) {
-            FluidStack fluidInBuffer = be.getFluidBuffer();
+
+            FluidIngredient fluidIngredient = castingRecipe.getFluidIngredient();
+            boolean fluidMatches = fluidIngredient.test(testedFluid);
+            if (!ignoreFluidAmount)
+                fluidMatches &= testedFluid.getAmount() >= fluidIngredient.getRequiredAmount();
+
             ItemStack mold = be.moldInv.getStackInSlot(0);
             Ingredient ingredient = castingRecipe.getIngredient();
+            boolean ingredientMatches = ingredient.test(mold);
 
-            boolean fluidMatches = castingRecipe.getFluidIngredient().test(fluidInBuffer);
-            boolean hasMold = !ingredient.isEmpty();
-            boolean ingredientMatches = hasMold && ingredient.test(mold);
-
-            return fluidMatches && (!hasMold || ingredientMatches);
+            return fluidMatches && ingredientMatches;
         }
         return false;
     }

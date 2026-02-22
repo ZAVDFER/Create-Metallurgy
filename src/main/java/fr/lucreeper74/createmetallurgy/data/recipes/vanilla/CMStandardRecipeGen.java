@@ -14,12 +14,15 @@ import net.minecraft.advancements.critereon.ItemPredicate;
 import net.minecraft.data.PackOutput;
 import net.minecraft.data.recipes.*;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.crafting.*;
+import net.minecraft.world.item.crafting.AbstractCookingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.RecipeSerializer;
+import net.minecraft.world.item.crafting.SimpleCraftingRecipeSerializer;
 import net.minecraft.world.level.ItemLike;
-import net.minecraftforge.common.Tags;
 import net.minecraftforge.common.crafting.CraftingHelper;
 import net.minecraftforge.common.crafting.conditions.ICondition;
 import net.minecraftforge.common.crafting.conditions.ModLoadedCondition;
@@ -89,6 +92,17 @@ public class CMStandardRecipeGen extends CMRecipeProvider {
                     .pattern("CCC")
                     .pattern("CCC")),
 
+    SLAG_FROM_BLOCK = create(CMItems.SLAG).withSuffix("_from_block")
+            .returns(9)
+            .unlockedBy(CMItems.SLAG::get)
+            .viaShapeless(b -> b.requires(CMBlocks.SLAG_BLOCK.get())),
+
+    SLAG_BLOCK = create(CMBlocks.SLAG_BLOCK).unlockedBy(CMItems.SLAG::get)
+            .viaShaped(b -> b.define('S', CMItems.SLAG.get())
+                    .pattern("SSS")
+                    .pattern("SSS")
+                    .pattern("SSS")),
+
     COKE_FROM_BLOCK = create(CMItems.COKE).withSuffix("_from_block")
             .returns(9)
             .unlockedBy(CMItems.COKE::get)
@@ -105,7 +119,7 @@ public class CMStandardRecipeGen extends CMRecipeProvider {
                     .requires(Items.COAL, 8)),
 
     SANDPAPER_BELT = create(CMItems.SANDPAPER_BELT).unlockedByTag(T::sandpaper)
-            .viaShaped(b -> b.define('D', Tags.Items.SAND_COLORLESS)
+            .viaShaped(b -> b.define('D', T.sandpaper())
                     .pattern("DDD")
                     .pattern("DDD")),
 
@@ -120,19 +134,21 @@ public class CMStandardRecipeGen extends CMRecipeProvider {
                     .pattern("WSW")
                     .pattern(" W ")),
 
-    STURDY_WHISK = create(CMItems.STURDY_WHISK).unlockedByTag(T::tungstenSheet)
-            .viaShaped(b -> b.define('T', T.tungstenSheet())
-                    .define('A', T.andesiteAlloy())
-                    .define('B', AllItems.STURDY_SHEET.get())
-                    .pattern(" A ")
-                    .pattern("BAB")
-                    .pattern("TBT")),
-
     COKE = create(CMItems.COKE::get).withSuffix("_from_coal")
             .viaCookingTag(T::coal)
             .rewardXP(.5f)
             .forDuration(200)
-            .inBlastFurnace();
+            .inBlastFurnace(),
+
+    REFRACTORY_MORTAR_BLOCK = create(CMBlocks.REFRACTORY_MORTAR).unlockedBy(T::refractoryMortar)
+            .viaShaped(b -> b.define('M', T.refractoryMortarBall())
+                    .pattern("MM")
+                    .pattern("MM")),
+
+    REFRACTORY_MORTAR_BALL = create(CMItems.REFRACTORY_MORTAR_BALL).withSuffix("_from_block")
+            .returns(4)
+            .unlockedBy(T::refractoryMortar)
+            .viaShapeless(b -> b.requires(T.refractoryMortar()));
 
 
     private Marker CONTENT = enterFolder("content");
@@ -179,7 +195,7 @@ public class CMStandardRecipeGen extends CMRecipeProvider {
                     .pattern("B")
                     .pattern("C")),
 
-    FOUNDRY_UNIT = create(CMItems.FOUNDRY_UNIT).unlockedByTag(T::steelIngot)
+    FOUNDRY_UNIT = create(CMItems.GAUGE_ATTACHMENT).unlockedByTag(T::steelIngot)
             .viaShaped(b -> b.define('S', T.steelIngot())
                     .define('C', Items.COMPASS)
                     .pattern("SCS")),
@@ -187,8 +203,19 @@ public class CMStandardRecipeGen extends CMRecipeProvider {
     FAUCET = create(CMBlocks.FAUCET_BLOCK).unlockedBy(T::andesiteAlloy)
             .viaShaped(b -> b.define('A', T.andesiteAlloy())
                     .pattern("A A")
-                    .pattern(" A "))
+                    .pattern(" A ")),
 
+    STURDY_WHISK = create(CMItems.STURDY_WHISK).unlockedByTag(T::tungstenSheet)
+            .viaShaped(b -> b.define('A', T.andesiteAlloy())
+                    .define('B', AllItems.STURDY_SHEET.get())
+                    .pattern(" A ")
+                    .pattern("BAB")
+                    .pattern("BBB")),
+
+    LADLE_FILTER = create(CMItems.LADLE_FILTER).unlockedByTag(T::steelIngot).returns(2)
+            .viaShaped(b -> b.define('W', ItemTags.WOOL)
+                    .define('S', T.steelIngot())
+                    .pattern("SW"))
     ;
 
     //

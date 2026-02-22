@@ -11,13 +11,17 @@ public class CastingFluidTank extends FluidTank {
     private final CastingBlockEntity be;
     protected LerpedFloat fluidLevel;
 
+    protected Runnable updateCallback;
+
     private static final int SYNC_RATE = 8;
     protected int syncCooldown;
     protected boolean queuedSync;
 
-    public CastingFluidTank(CastingBlockEntity be) {
+    public CastingFluidTank(CastingBlockEntity be, Runnable updateCallback) {
         super(0);
         this.be = be;
+        this.updateCallback = updateCallback;
+
         fluidLevel = LerpedFloat.linear()
                 .startWithValue(0)
                 .chase(0, .25f, LerpedFloat.Chaser.EXP);
@@ -26,14 +30,14 @@ public class CastingFluidTank extends FluidTank {
     public FluidTank readFromNBT(CompoundTag nbt, boolean clientPacket) {
         setFluid(FluidStack.loadFluidStackFromNBT(nbt.getCompound("fluid")));
         setCapacity(nbt.getInt("capacity"));
-        fluidLevel.readNBT(nbt.getCompound("level"), clientPacket);
+        fluidLevel.readNBT(nbt.getCompound("fluidLevel"), clientPacket);
         return this;
     }
 
     public CompoundTag writeToNBT(CompoundTag nbt) {
         nbt.put("fluid", fluid.writeToNBT(new CompoundTag()));
         nbt.putInt("capacity", capacity);
-        nbt.put("level", fluidLevel.writeNBT());
+        nbt.put("fluidLevel", fluidLevel.writeNBT());
         return nbt;
     }
 
@@ -41,9 +45,9 @@ public class CastingFluidTank extends FluidTank {
         if (syncCooldown > 0) {
             syncCooldown--;
             if (syncCooldown == 0 && queuedSync)
-                updateFluids();
+                be.sendData();
         }
-        LerpedFloat fluidLevel = getFluidLevel();
+
         if (fluidLevel != null)
             fluidLevel.tickChaser();
     }
@@ -53,14 +57,9 @@ public class CastingFluidTank extends FluidTank {
             queuedSync = true;
             return;
         }
-        updateFluids();
+        be.sendData();
         queuedSync = false;
         syncCooldown = SYNC_RATE;
-    }
-
-    protected void updateFluids() {
-        be.sendData();
-        be.setChanged();
     }
 
     public void reset() {
@@ -72,9 +71,14 @@ public class CastingFluidTank extends FluidTank {
     protected void onContentsChanged() {
         if (!be.hasLevel())
             return;
+
         fluidLevel.chase(getFluidAmount() / (float) getCapacity(), .25f, LerpedFloat.Chaser.EXP);
+
         if (!be.getLevel().isClientSide())
             sendDataLazily();
+
+        updateCallback.run();
+
         super.onContentsChanged();
     }
 
@@ -86,7 +90,7 @@ public class CastingFluidTank extends FluidTank {
 
         int capacity = this.capacity;
         if (capacity == 0) {
-            capacity = be.initProcess(resource, action);
+            capacity = be.getRequirementFromFluid(resource.copy());
             if (capacity <= 0)
                 return 0;
             if (action.execute()) {
@@ -132,7 +136,10 @@ public class CastingFluidTank extends FluidTank {
 
     @Override
     public @NotNull FluidStack drain(int maxDrain, FluidAction action) {
-        int drained =  Math.min(fluid.getAmount(), maxDrain);
+        if (be.running && be.processingTick > 0)
+            return FluidStack.EMPTY; // Cannot drain while solidify
+
+        int drained = Math.min(fluid.getAmount(), maxDrain);
 
         FluidStack stack = new FluidStack(fluid, drained);
         if (action.execute() && drained > 0) {

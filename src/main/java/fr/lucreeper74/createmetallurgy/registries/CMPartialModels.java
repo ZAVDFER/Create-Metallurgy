@@ -19,12 +19,20 @@ public class CMPartialModels {
             FOUNDRY_MIXER_HEAD = block("foundry_mixer/head"),
             SHAFTLESS_STONE_COGWHEEL = block("foundry_mixer/cog"),
 
-            THERMOMETER_GAUGE = block("gauges/thermometer"),
-            THERMOMETER_DIAL = block("gauges/dial"),
+            THERMOMETER_GAUGE = block("attachments/gauge/thermometer"),
+                THERMOMETER_DIAL = block("attachments/gauge/dial"),
+                FLUID_PORT = block("attachments/fluid_port"),
+                ITEM_PORT = block("attachments/item_port"),
 
             GRINDER_BELT = block("mechanical_belt_grinder/belt"),
 
             BULB_INNER_GLOW = block("light_bulb/inner_glow"),
+
+            LABELLING_STATION_TRAY_REGULAR = block("labelling_station/tray"),
+                LABELLING_STATION_TRAY_DEFRAG = block("labelling_station/tray"),
+                LABELLING_STATION_HATCH_OPEN = block("labelling_station/hatch_open"),
+                LABELLING_STATION_HATCH_CLOSED = block("labelling_station/hatch_closed"),
+
 
     // JEI Gui models
 
@@ -38,17 +46,13 @@ public class CMPartialModels {
             BULB_TUBES_GLOW.put(color, block("light_bulb/tube_glow/" + CMLang.asId(color.name())));
         }
     }
-//
-//    public static final Map<ResourceLocation, PartialModel> LADLES = new HashMap<>();
-//    public static final List<PartialModel> LADLES_TO_HIDE_AS = new ArrayList<>();
-//    public static final Map<ResourceLocation, PartialModel> LADLE_HANDLE = new HashMap<>();
 
     static {
-        for (PackageStyle style : LadleStyles.STYLES) {
+        for (PackageStyle style : LadleStyles.LADLES_STYLES) {
             ResourceLocation key = LadleStyles.getItemId(style);
             PartialModel model = PartialModel.of(CreateMetallurgy.genRL("item/" + key.getPath()));
             AllPartialModels.PACKAGES.put(key, model);
-            AllPartialModels.PACKAGE_RIGGING.put(key, PartialModel.of(LadleStyles.getHandleModel(style)));
+            AllPartialModels.PACKAGE_RIGGING.put(key, PartialModel.of(LadleStyles.getHandleModel()));
         }
     }
 
